@@ -26,7 +26,7 @@ jobs:
     - name: Setup env
       run: |
         export INIT_USERNAME=CTRANITCS_EXTERNAL
-        INIT_PASSWORD=stat
+        export INIT_PASSWORD=stat
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
