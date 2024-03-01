@@ -25,8 +25,8 @@ jobs:
         python-version: "3.10"
     - name: Setup env
       run: |
-        export INIT_USERNAME=${{secrets.INIT_USERNAME}}
-        export INIT_PASSWORD=${{secrets.INIT_PASSWORD}}
+        export INIT_USERNAME=CTRANITCS_EXTERNAL
+        INIT_PASSWORD=stat
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
