@@ -27,15 +27,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e '.[dev]'
-        export INIT_USERNAME=CTRANITCS_EXTERNAL
-        export INIT_PASSWORD=stat
-        echo $INIT_USERNAME
-        echo $INIT_PASSWORD
         # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Test with pytest
       run: |
-        export INIT_USERNAME=CTRANITCS_EXTERNAL
-        export INIT_PASSWORD=stat
+        export INIT_USERNAME=${{secrets.INIT_USERNAME}}
+        export INIT_PASSWORD=${{secrets.INIT_PASSWORD}}
         echo $INIT_USERNAME
         echo $INIT_PASSWORD
         pytest CTRAN_tests
