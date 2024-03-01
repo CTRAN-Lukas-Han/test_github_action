@@ -38,10 +38,4 @@ class INITResource(ConfigurableResource):
         return rows
 
 
-class OracleResource(ConfigurableResource):
-    username: str
-    password: str
-    connection_string: str
-
-    def connect(self):
-       return oracledb.connect(user=self.username,password=self.password,dsn=self.connection_string)
+    

@@ -1,26 +1,25 @@
-from dagster import asset, AssetExecutionContext, MetadataValue, get_dagster_logger, Config, AssetCheckResult, Definitions, asset, asset_check, DailyPartitionsDefinition
-from CTRAN.resources import SFTPResource, INITResource, ODBCResource, OracleResource
+from dagster import asset, AssetExecutionContext, MetadataValue, get_dagster_logger, Config, AssetCheckResult, Definitions, asset, asset_check
+from CTRAN.resources import SFTPResource, INITResource, MSSQLResource
 import pandas as pd
 import pandera as pa
-from typing import Dict
 import os
 import pathlib
-from datetime import date, datetime, timedelta
+from datetime import date
 
 base_dir = os.getenv("BI_DIRECTORY_BASE")
-psu_asset_partition = DailyPartitionsDefinition(start_date="2024-01-01")
 
-@asset(group_name="PSU_Extract", partitions_def=psu_asset_partition)
-def init_psu_extract(context: AssetExecutionContext, INIT2: OracleResource) -> pd.DataFrame:
+@asset(group_name="PSU_Extract")
+def init_psu_extract(context: AssetExecutionContext, INIT: INITResource) -> pd.DataFrame:
     with open("./CTRAN/queries/PSUTransitPortalDataFactored.sql","r") as f:
         query = f.read()
 
     context.log.info(query)
-    partition_date_str=context.partition_key
-    partition_date_str_offset = (datetime.strptime(partition_date_str,"%Y-%m-%d").date() - timedelta(days=5)).strftime("%Y-%m-%d") #offset by five days to allow init data to come in
-    conn = INIT2.connect()
-    df = pd.read_sql(query,conn,params={"QUERY_DATE":partition_date_str_offset})
-    conn.close()
+    rows = INIT.query(query)
+    header_row = ['SERVICE_DATE', 'VEHICLE_NUMBER', 'LEAVE_TIME', 'TRAIN', 'ROUTE_NUMBER', 'DIRECTIONAL', 'SERVICE_KEY', 
+                  'TRIP_NUMBER', 'STOP_TIME', 'ARRIVE_TIME', 'DWELL', 'LOCATION_ID', 'DOOR', 'LIFT', 'ONS', 'OFFS', 'ESTIMATED_LOAD', 
+                  'MAXIMUM_SPEED', 'TRAIN_MILEAGE', 'PATTERN_DISTANCE', 'LOCATION_DISTANCE', 'X_COORDINATE', 
+                  'Y_COORDINATE', 'DATA_SOURCE', 'SCHEDULE_STATUS', 'TRIP_ID', 'TIME_PERIOD']
+    df = pd.DataFrame(rows, columns=header_row)
     context.add_output_metadata(
         metadata={
             "num_records": len(df),
@@ -29,14 +28,27 @@ def init_psu_extract(context: AssetExecutionContext, INIT2: OracleResource) -> p
     return df
 
 @asset(group_name="PSU_Extract")
-def fin_vehicle_extract(context: AssetExecutionContext, DWCTRAN: ODBCResource) -> pd.DataFrame:
+def fin_vehicle_extract(context: AssetExecutionContext, DWCTRAN: MSSQLResource) -> pd.DataFrame:
     with open("./CTRAN/queries/FIN_VEHICLES.sql","r") as f:
         query = f.read()
 
     context.log.info(query)
-    conn = DWCTRAN.connect()
-    df=pd.read_sql(query, conn)
-    conn.close()
+    rows = DWCTRAN.query(query)
+    header_row = ['VEHICLE',
+	'ASSET_ID',
+	'VIN',
+	'FLEET',
+	'DESCRIPTION',
+	'MODEL_YEAR',
+	'PURCHASE_YEAR',
+	'[LENGTH]',
+	'LICENSE_PLATE',
+	'ACQUISITION_COST',
+	'SERVICETYPE_NTD',
+	'SEATED_CAPACITY',
+	'EFFECTIVE_FROM',
+	'EFFECTIVE_TO']
+    df = pd.DataFrame(rows, columns=header_row)
     context.add_output_metadata(
         metadata={
             "num_records": len(df),
@@ -44,10 +56,9 @@ def fin_vehicle_extract(context: AssetExecutionContext, DWCTRAN: ODBCResource) -
     })
     return df
 
-@asset(group_name="PSU_Extract",partitions_def=psu_asset_partition)
+@asset(group_name="PSU_Extract")
 def compose_psu_csv(context: AssetExecutionContext, fin_vehicle_extract: pd.DataFrame, init_psu_extract: pd.DataFrame) -> os.PathLike:
-    partition_date_str=context.partition_key
-    output_path=os.path.join(base_dir,"DWCTRAN/BDA/BDA_PSU_EXTRACT/PSU_TransitPortal_"+partition_date_str+".csv")
+    output_path="/media/windowsshare/Business Intelligence/DWCTRAN/BDA/BDA_PSU_EXTRACT/PSU_TransitPortal_"+date.today().isoformat()+".csv"
     df = init_psu_extract.merge(fin_vehicle_extract,how="left",left_on="VEHICLE_NUMBER",right_on="VEHICLE")
 
     # check column type and chage them to int
@@ -63,7 +74,7 @@ def compose_psu_csv(context: AssetExecutionContext, fin_vehicle_extract: pd.Data
         'LOCATION_DISTANCE','X_COORDINATE','Y_COORDINATE','DATA_SOURCE','SCHEDULE_STATUS','TRIP_ID','SEATED_CAPACITY','TIME_PERIOD']].to_csv(output_path, index=False)
     return pathlib.Path(output_path)
 
-@asset(group_name="PSU_Extract",partitions_def=psu_asset_partition)
+@asset(group_name="PSU_Extract")
 def psu_upload_file(context: AssetExecutionContext, PSUSFTP: SFTPResource, compose_psu_csv: os.PathLike) -> None:
     context.log.info(PSUSFTP.listdir())
     context.log.info(compose_psu_csv)
@@ -71,10 +82,9 @@ def psu_upload_file(context: AssetExecutionContext, PSUSFTP: SFTPResource, compo
     context.add_output_metadata(metadata={"fileStat":print(stat)})
     return None
 
-"""
+'''
 @asset_check(asset=compose_psu_csv)
-def validate_psu_csv_schema(context: AssetExecutionContext,compose_psu_csv: Dict[str,os.PathLike]):
-    context.log.info(compose_psu_csv.values())
+def validate_psu_csv_schema(context: AssetExecutionContext,compose_psu_csv: os.PathLike):
     psu_csv=pd.read_csv(compose_psu_csv, parse_dates=['SERVICE_DATE'],dtype={'STOP_TIME':'Int64', 'ARRIVE_TIME':'Int64', 'TRIP_ID':'Int64', 'SEATED_CAPACITY':'Int64', 'TIME_PERIOD':str, 'DIRECTIONAL':str,'SERVICE_KEY':str})
     context.log.info(psu_csv.dtypes.to_dict())
     expected_schema = pa.DataFrameSchema({
@@ -109,4 +119,5 @@ def validate_psu_csv_schema(context: AssetExecutionContext,compose_psu_csv: Dict
         index = pa.Index(int)
      )
     return AssetCheckResult(passed=type(expected_schema.validate(psu_csv)) == pd.DataFrame)
-"""
+'''
+

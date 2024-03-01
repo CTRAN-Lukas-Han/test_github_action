@@ -1,6 +1,9 @@
 *.egg-info/
 CTRAN/.env
 tmp*/
+CTRAN/assets/__init__.py
+CTRAN/assets/CVAN_Dashboard.py
+CTRAN/__init__.py
 
 # from https://github.com/github/gitignore/blob/main/Python.gitignore
 # Byte-compiled / optimized / DLL files

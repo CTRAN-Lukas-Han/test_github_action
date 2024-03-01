@@ -14,10 +14,10 @@ setup(
         "numpy",
         "pandera",
         "requests",
-        "json",
+        #"json",
         "fabric",
-        "smtplib",
-        "email",
+        #"smtplib",
+        #"email",
         "dagster-webserver"
     ],
     extras_require={"dev": ["dagster-webserver", "pytest"]},

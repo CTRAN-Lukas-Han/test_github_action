@@ -23,14 +23,3 @@ class SFTPResource(ConfigurableResource):
         c.close()
         return stat
 
-
-class StubSFTP:
-    def listdir(self):
-        logger = get_dagster_logger()
-        logger.info("Stub SFTP executing listdir")
-        return []
-
-    def uploadFile(self,filepath,filename):
-        logger = get_dagster_logger()
-        logger.info("Stub SFTP executing uploadFile")
-        return None
